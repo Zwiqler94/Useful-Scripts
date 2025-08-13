@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# --- Self-update config ---
+UPDATE_URL="https://raw.githubusercontent.com/Zwiqler94/Useful-Scripts/main/nvm-clean.sh"
+
+if [[ "${1:-}" == "--update-self" ]]; then
+  echo "Updating $0 from $UPDATE_URL ..."
+  if curl -fsSL "$UPDATE_URL" -o "$0"; then
+    chmod +x "$0"
+    echo "Update complete."
+  else
+    echo "Update failed."
+  fi
+  exit 0
+fi
+
 # --- Shell-agnostic prompt ---
 prompt_confirm() {
   local prompt="$1" ; local __var=$2
@@ -14,10 +28,8 @@ prompt_confirm() {
 # --- Load nvm ---
 if [[ -z "${NVM_DIR:-}" ]]; then export NVM_DIR="$HOME/.nvm"; fi
 if [[ -s "$NVM_DIR/nvm.sh" ]]; then
-  # shellcheck source=/dev/null
   source "$NVM_DIR/nvm.sh"
 elif command -v brew >/dev/null 2>&1 && [[ -s "$(brew --prefix)/opt/nvm/nvm.sh" ]]; then
-  # shellcheck source=/dev/null
   source "$(brew --prefix)/opt/nvm/nvm.sh"
 else
   echo "Could not find nvm. Set NVM_DIR or install nvm." >&2
@@ -26,7 +38,7 @@ fi
 
 usage() {
   cat <<'EOF'
-Usage: nvm-clean.sh [--dry-run] [--yes] [--keep vX.Y.Z]... [--review-globals]
+Usage: nvm-clean.sh [--dry-run] [--yes] [--keep vX.Y.Z]... [--review-globals] [--update-self]
 
 Removes Node versions managed by nvm, except your current version.
 
@@ -36,12 +48,7 @@ Options:
   --keep vX.Y.Z     Keep a specific version. Repeat as needed.
   --review-globals  After uninstalls, review remaining versions' global npm packages
                     and optionally remove them package-by-package.
-
-Examples:
-  ./nvm-clean.sh
-  ./nvm-clean.sh --dry-run
-  ./nvm-clean.sh --keep v18.20.3 --keep v20.12.2
-  ./nvm-clean.sh --yes --review-globals
+  --update-self     Replace this script with the latest version from GitHub.
 EOF
 }
 
@@ -73,7 +80,6 @@ review_globals_for_version() {
   echo "----- Global npm review for v$v -----"
   nvm use "$v" >/dev/null
   local json; json="$(list_globals_json)"
-  # Extract top-level dependency names from JSON
   local pkgs
   pkgs=$(printf '%s' "$json" | python3 - <<'PY'
 import sys, json
@@ -103,9 +109,11 @@ PY
 # --- Current version ---
 CURRENT="$(node -v 2>/dev/null | tr -d 'v' || true)"
 
-# --- Installed versions (only exact vX.Y.Z lines) ---
-# Works across bash/zsh; avoid alias lines.
-mapfile -t VERSIONS < <(
+# --- Installed versions ---
+VERSIONS=()
+while IFS= read -r line; do
+  VERSIONS+=("$line")
+done < <(
   nvm ls --no-colors \
     | sed -nE 's/^[[:space:]]*v([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' \
     | sort -u
@@ -138,9 +146,7 @@ if $DRY_RUN; then
 fi
 
 # --- Uninstall loop ---
-REMAINING=()
-for v in "${VERSIONS[@]}"; do REMAINING+=("$v"); done
-
+REMAINING=("${VERSIONS[@]}")
 for v in "${CANDIDATES[@]}"; do
   dir="$NVM_DIR/versions/node/v$v"
   if [[ ! -d "$dir" ]]; then
@@ -160,13 +166,12 @@ for v in "${CANDIDATES[@]}"; do
       continue
     fi
   fi
-  # Remove from REMAINING if uninstall succeeded
   tmp=()
   for x in "${REMAINING[@]}"; do [[ "$x" != "$v" ]] && tmp+=("$x"); done
   REMAINING=("${tmp[@]}")
 done
 
-# --- Optional: review globals for remaining versions (incl. current) ---
+# --- Optional: review globals ---
 if $REVIEW_GLOBALS; then
   echo
   echo "Reviewing global npm packages for remaining versions: ${REMAINING[*]:-none}"
