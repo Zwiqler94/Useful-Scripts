@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # --- Self-update config ---
-UPDATE_URL="https://raw.githubusercontent.com/Zwiqler94/Useful-Scripts/main/nvm-clean.sh"
+UPDATE_URL="https://raw.githubusercontent.com/Zwiqler94/Useful-Scripts/refs/heads/main/nvm-cleanup.sh"
 
 if [[ "${1:-}" == "--update-self" ]]; then
   echo "Updating $0 from $UPDATE_URL ..."
